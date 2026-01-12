@@ -4,5 +4,7 @@ numpy
 Pillow
 ultralytics
 mediapipe
-eSpeak-ng #espeak
-pyttsx3 #→ TTS 語音播報（離線可用）
+#eSpeak-ng #espeak
+#pyttsx3 #→ TTS 語音播報（離線可用）
+gtts
+playsound
