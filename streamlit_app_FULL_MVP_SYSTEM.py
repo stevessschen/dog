@@ -3,13 +3,15 @@ import cv2
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from ultralytics import YOLO
-import streamlit.components.v1 as components
+import pyttsx3
+import tempfile
+import os
 
 # --------------------------------------------------
 # Page Setup
 # --------------------------------------------------
 st.set_page_config(page_title="DogTalk AI MVP", layout="wide")
-st.title("🐶 DogTalk AI — Real-Time Dog Communication System")
+st.title("🐶 DogTalk AI — Real-Time Dog Communication")
 
 st.markdown("Point your camera at your dog. AI will analyze posture, emotion and speak.")
 
@@ -27,6 +29,9 @@ model = load_model()
 # --------------------------------------------------
 if "last_message" not in st.session_state:
     st.session_state.last_message = "No dog detected yet."
+
+if "audio_file" not in st.session_state:
+    st.session_state.audio_file = None
 
 # --------------------------------------------------
 # AI Logic
@@ -50,47 +55,36 @@ def classify_emotion(area, gesture):
     return "curious"
 
 # --------------------------------------------------
-# Browser Voice Engine (Persistent)
+# Text to Speech (REAL AUDIO FILE)
 # --------------------------------------------------
-def init_speech_engine():
-    components.html("""
-    <script>
-    window.dogtalkSpeak = function(text) {
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = "en-US";
-        msg.rate = 1;
-        msg.pitch = 1;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(msg);
-    }
-    </script>
-    """, height=0)
+def generate_audio(text):
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 170)
 
-def speak(text):
-    components.html(f"""
-    <script>
-        if (window.dogtalkSpeak) {{
-            window.dogtalkSpeak("{text}");
-        }}
-    </script>
-    """, height=0)
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    engine.save_to_file(text, temp_file.name)
+    engine.runAndWait()
 
-# Initialize voice engine ONCE
-init_speech_engine()
+    return temp_file.name
 
 # --------------------------------------------------
-# Sidebar UI (Control Panel)
+# Sidebar UI
 # --------------------------------------------------
 st.sidebar.title("🎛 DogTalk AI Control Panel")
-
 st.sidebar.subheader("AI Interpretation")
 st.sidebar.success(st.session_state.last_message)
 
 if st.sidebar.button("🔊 Speak Dog Emotion"):
-    speak(st.session_state.last_message)
+    st.session_state.audio_file = generate_audio(st.session_state.last_message)
 
 st.sidebar.markdown("---")
 st.sidebar.info("Allow camera access and point at your dog.")
+
+# --------------------------------------------------
+# Audio Player (Main UI)
+# --------------------------------------------------
+if st.session_state.audio_file:
+    st.audio(st.session_state.audio_file)
 
 # --------------------------------------------------
 # Video Processor
@@ -116,24 +110,14 @@ class DogVideoProcessor(VideoTransformerBase):
                     message = f"Your dog is {gesture} and feels {emotion}"
                     st.session_state.last_message = message
 
-                    # Draw box
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 2)
-
-                    # Label
-                    cv2.putText(
-                        img,
-                        message,
-                        (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0,255,0),
-                        2
-                    )
+                    cv2.putText(img, message, (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
         return img
 
 # --------------------------------------------------
-# Webcam (Main Panel)
+# Webcam
 # --------------------------------------------------
 webrtc_streamer(
     key="dogtalk",
