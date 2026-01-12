@@ -3,7 +3,8 @@ import cv2
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from ultralytics import YOLO
-from gtts import gTTS
+#from gtts import gTTS
+import streamlit.components.v1 as components
 import tempfile
 import os
 
@@ -50,12 +51,15 @@ def generate_interpretation(emotion, gesture):
 # -----------------------
 # Voice Output
 # -----------------------
-
-def speak(text):
-    tts = gTTS(text)
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    tts.save(temp_file.name)
-    return temp_file.name
+def speak_browser(text):
+    js = f"""
+    <script>
+    const msg = new SpeechSynthesisUtterance("{text}");
+    msg.lang = "en-US";
+    window.speechSynthesis.speak(msg);
+    </script>
+    """
+    components.html(js)
 
 # -----------------------
 # WebRTC Video Processor
@@ -116,8 +120,7 @@ if ctx.video_transformer:
         st.success(message)
 
         if st.button("🔊 Let DogTalk AI Speak"):
-            audio_file = speak(message)
-            st.audio(audio_file)
+            speak_browser(message)
             os.remove(audio_file)
 
 else:
