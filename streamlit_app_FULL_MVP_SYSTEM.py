@@ -5,30 +5,32 @@ from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from ultralytics import YOLO
 import streamlit.components.v1 as components
 
-# -------------------------
+# --------------------------------------------------
 # Page Setup
-# -------------------------
+# --------------------------------------------------
 st.set_page_config(page_title="DogTalk AI MVP", layout="wide")
-st.title("🐶 DogTalk AI — Real-Time Dog Communication")
+st.title("🐶 DogTalk AI — Real-Time Dog Communication System")
 
-# -------------------------
+st.markdown("Point your camera at your dog. AI will analyze posture, emotion and speak.")
+
+# --------------------------------------------------
 # Load AI Model
-# -------------------------
+# --------------------------------------------------
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
 
 model = load_model()
 
-# -------------------------
+# --------------------------------------------------
 # Shared State
-# -------------------------
+# --------------------------------------------------
 if "last_message" not in st.session_state:
     st.session_state.last_message = "No dog detected yet."
 
-# -------------------------
+# --------------------------------------------------
 # AI Logic
-# -------------------------
+# --------------------------------------------------
 def classify_gesture(w, h):
     ratio = h / w
     if ratio > 1.2:
@@ -47,35 +49,52 @@ def classify_emotion(area, gesture):
         return "excited"
     return "curious"
 
-# -------------------------
-# Browser Voice (TTS)
-# -------------------------
-def speak_browser(text):
-    js = f"""
+# --------------------------------------------------
+# Browser Voice Engine (Persistent)
+# --------------------------------------------------
+def init_speech_engine():
+    components.html("""
     <script>
-    const msg = new SpeechSynthesisUtterance("{text}");
-    msg.lang = "en-US";
-    window.speechSynthesis.speak(msg);
+    window.dogtalkSpeak = function(text) {
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = "en-US";
+        msg.rate = 1;
+        msg.pitch = 1;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(msg);
+    }
     </script>
-    """
-    components.html(js, height=0)
+    """, height=0)
 
-# -------------------------
-# Sidebar UI (ALWAYS RENDERS)
-# -------------------------
+def speak(text):
+    components.html(f"""
+    <script>
+        if (window.dogtalkSpeak) {{
+            window.dogtalkSpeak("{text}");
+        }}
+    </script>
+    """, height=0)
+
+# Initialize voice engine ONCE
+init_speech_engine()
+
+# --------------------------------------------------
+# Sidebar UI (Control Panel)
+# --------------------------------------------------
 st.sidebar.title("🎛 DogTalk AI Control Panel")
-st.sidebar.write("AI Interpretation:")
+
+st.sidebar.subheader("AI Interpretation")
 st.sidebar.success(st.session_state.last_message)
 
 if st.sidebar.button("🔊 Speak Dog Emotion"):
-    speak_browser(st.session_state.last_message)
+    speak(st.session_state.last_message)
 
 st.sidebar.markdown("---")
-st.sidebar.info("Point camera at your dog")
+st.sidebar.info("Allow camera access and point at your dog.")
 
-# -------------------------
+# --------------------------------------------------
 # Video Processor
-# -------------------------
+# --------------------------------------------------
 class DogVideoProcessor(VideoTransformerBase):
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -97,15 +116,25 @@ class DogVideoProcessor(VideoTransformerBase):
                     message = f"Your dog is {gesture} and feels {emotion}"
                     st.session_state.last_message = message
 
-                    cv2.rectangle(img, (x1,y1), (x2,y2), (0,255,0), 2)
-                    cv2.putText(img, message, (x1, y1-10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                    # Draw box
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 2)
+
+                    # Label
+                    cv2.putText(
+                        img,
+                        message,
+                        (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0,255,0),
+                        2
+                    )
 
         return img
 
-# -------------------------
+# --------------------------------------------------
 # Webcam (Main Panel)
-# -------------------------
+# --------------------------------------------------
 webrtc_streamer(
     key="dogtalk",
     video_transformer_factory=DogVideoProcessor,
