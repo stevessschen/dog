@@ -8,13 +8,11 @@ import streamlit.components.v1 as components
 # -------------------------
 # Page Setup
 # -------------------------
-st.set_page_config(page_title="DogTalk AI MVP", layout="centered")
+st.set_page_config(page_title="DogTalk AI MVP", layout="wide")
 st.title("🐶 DogTalk AI — Real-Time Dog Communication")
 
-st.markdown("Point your camera at your dog. AI will interpret posture & emotion.")
-
 # -------------------------
-# Load AI model
+# Load AI Model
 # -------------------------
 @st.cache_resource
 def load_model():
@@ -26,7 +24,7 @@ model = load_model()
 # Shared State
 # -------------------------
 if "last_message" not in st.session_state:
-    st.session_state.last_message = ""
+    st.session_state.last_message = "No dog detected yet."
 
 # -------------------------
 # AI Logic
@@ -50,17 +48,30 @@ def classify_emotion(area, gesture):
     return "curious"
 
 # -------------------------
-# Browser Voice
+# Browser Voice (TTS)
 # -------------------------
 def speak_browser(text):
     js = f"""
     <script>
-    var msg = new SpeechSynthesisUtterance("{text}");
+    const msg = new SpeechSynthesisUtterance("{text}");
     msg.lang = "en-US";
     window.speechSynthesis.speak(msg);
     </script>
     """
-    components.html(js)
+    components.html(js, height=0)
+
+# -------------------------
+# Sidebar UI (ALWAYS RENDERS)
+# -------------------------
+st.sidebar.title("🎛 DogTalk AI Control Panel")
+st.sidebar.write("AI Interpretation:")
+st.sidebar.success(st.session_state.last_message)
+
+if st.sidebar.button("🔊 Speak Dog Emotion"):
+    speak_browser(st.session_state.last_message)
+
+st.sidebar.markdown("---")
+st.sidebar.info("Point camera at your dog")
 
 # -------------------------
 # Video Processor
@@ -88,12 +99,12 @@ class DogVideoProcessor(VideoTransformerBase):
 
                     cv2.rectangle(img, (x1,y1), (x2,y2), (0,255,0), 2)
                     cv2.putText(img, message, (x1, y1-10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
         return img
 
 # -------------------------
-# Webcam
+# Webcam (Main Panel)
 # -------------------------
 webrtc_streamer(
     key="dogtalk",
@@ -101,17 +112,3 @@ webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
-
-# -------------------------
-# UI Output (MUST BE AFTER webrtc)
-# -------------------------
-st.markdown("---")
-st.subheader("🧠 AI Interpretation")
-
-if st.session_state.last_message:
-    st.success(st.session_state.last_message)
-
-    if st.button("🔊 Let DogTalk AI Speak"):
-        speak_browser(st.session_state.last_message)
-else:
-    st.info("Waiting for dog detection...")
