@@ -1,7 +1,6 @@
-opencv-python
-ultralytics
-libgl1
-libglib2.0-0
-Pillow
-numpy
 streamlit
+opencv-python
+numpy
+Pillow
+ultralytics
+mediapipe
