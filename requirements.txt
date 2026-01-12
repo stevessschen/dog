@@ -4,3 +4,4 @@ numpy
 Pillow
 ultralytics
 mediapipe
+pyttsx3 #→ TTS 語音播報（離線可用）
