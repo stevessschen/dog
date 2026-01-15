@@ -90,9 +90,14 @@ def classify_emotion(area, gesture):
 # Webcam Processor
 # -------------------------------
 class DogVision(VideoTransformerBase):
+    def __init__(self):
+        self.last_message = "No dog detected yet."
+
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
         results = model.predict(img, conf=0.45, verbose=False)
+
+        detected = False
 
         for r in results:
             if r.boxes is None:
@@ -101,6 +106,7 @@ class DogVision(VideoTransformerBase):
             for box, cls in zip(r.boxes.xyxy, r.boxes.cls):
                 label = model.names[int(cls)]
                 if label == "dog":
+                    detected = True
                     x1, y1, x2, y2 = map(int, box)
                     w, h = x2 - x1, y2 - y1
                     area = w * h
@@ -108,10 +114,9 @@ class DogVision(VideoTransformerBase):
                     gesture = classify_gesture(w, h)
                     emotion = classify_emotion(area, gesture)
 
-                    msg = f"Your dog is {gesture} and feels {emotion}"
-                    st.session_state.last_message = msg
+                    msg = f"The dog is {gesture} and feeling {emotion}"
+                    self.last_message = msg
 
-                    # Draw UI
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 3)
                     cv2.putText(
                         img, msg, (x1, y1-12),
@@ -119,7 +124,11 @@ class DogVision(VideoTransformerBase):
                         0.7, (0,255,0), 2
                     )
 
+        if not detected:
+            self.last_message = "No dog detected yet."
+
         return img
+
 
 # -------------------------------
 # UI Layout
@@ -128,24 +137,33 @@ col1, col2 = st.columns([3, 1])
 
 with col2:
     st.subheader("🎯 Dog Interpretation")
-    st.info(st.session_state.last_message)
+
+    if webrtc_ctx.video_transformer:
+        current_message = webrtc_ctx.video_transformer.last_message
+    else:
+        current_message = "Starting camera..."
+
+    st.info(current_message)
 
     if st.button("🔊 Speak Dog Emotion", use_container_width=True):
-        speak(st.session_state.last_message)
-
-    st.markdown("---")
-    st.markdown("### 📱 Mobile Tips")
-    st.markdown("• Allow camera access\n• Tap Speak button\n• Use landscape mode")
+        speak(current_message)
 
 # -------------------------------
 # Webcam
 # -------------------------------
 with col1:
-    webrtc_streamer(
+    webrtc_ctx = webrtc_streamer(
         key="dogtalk-ai",
         video_transformer_factory=DogVision,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True
     )
+
+    #webrtc_streamer(
+    #    key="dogtalk-ai",
+    #    video_transformer_factory=DogVision,
+    #    media_stream_constraints={"video": True, "audio": False},
+    #    async_processing=True
+    #)
 
 st.markdown("<div class='footer'>DogTalk AI © 2026 — MVP Prototype</div>", unsafe_allow_html=True)
