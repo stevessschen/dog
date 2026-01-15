@@ -1,57 +1,151 @@
 import streamlit as st
-import cv2
-import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from ultralytics import YOLO
+import cv2
+import numpy as np
+import streamlit.components.v1 as components
 
-st.set_page_config(page_title="DogTalk AI MVP", layout="centered")
-st.title("🐶 DogTalk AI — Real-Time Dog Communication")
+# -------------------------------
+# Page Config (Mobile friendly)
+# -------------------------------
+st.set_page_config(
+    page_title="DogTalk AI",
+    page_icon="🐶",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-st.markdown("AI analyzes your dog's posture and behavior in real time.")
+st.markdown("""
+<style>
+body { background-color: #0f172a; color: white; }
+.big-title { font-size: 40px; font-weight: bold; text-align: center; }
+.subtitle { text-align: center; font-size: 18px; }
+.footer { text-align: center; opacity: 0.6; margin-top: 30px; }
+</style>
+""", unsafe_allow_html=True)
 
-# Load YOLO model (small + fast)
-model = YOLO("yolov8n.pt")
+st.markdown("<div class='big-title'>🐶 DogTalk AI</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Real-time Dog Emotion & Gesture Translator</div>", unsafe_allow_html=True)
 
-# Simple dog emotion logic (MVP)
-def analyze_dog_state(box_area):
-    if box_area > 120000:
-        return "🐕 Dog is very close — seeking attention"
-    elif box_area > 50000:
-        return "🐶 Dog is calm and observing"
+# -------------------------------
+# Browser TTS Engine
+# -------------------------------
+components.html("""
+<script>
+window.dogtalkSpeak = function(text) {
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = "en-US";
+    msg.rate = 1;
+    msg.pitch = 1.1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(msg);
+}
+</script>
+""", height=0)
+
+def speak(text):
+    components.html(f"""
+    <script>
+        window.dogtalkSpeak("{text}");
+    </script>
+    """, height=0)
+
+# -------------------------------
+# State
+# -------------------------------
+if "last_message" not in st.session_state:
+    st.session_state.last_message = "No dog detected yet."
+
+# -------------------------------
+# Load YOLO (auto-downloads)
+# -------------------------------
+@st.cache_resource
+def load_model():
+    return YOLO("yolov8n")
+
+model = load_model()
+
+# -------------------------------
+# AI Logic
+# -------------------------------
+def classify_gesture(w, h):
+    ratio = h / w
+    if ratio > 1.25:
+        return "standing"
+    elif ratio < 0.7:
+        return "lying"
     else:
-        return "🐾 Dog is far — maybe curious or cautious"
+        return "sitting"
 
+def classify_emotion(area, gesture):
+    if gesture == "lying":
+        return "relaxed 😌"
+    if gesture == "sitting":
+        return "attentive 👀"
+    if area > 130000:
+        return "excited 🤩"
+    return "curious 🐾"
 
-class DogVideoProcessor(VideoTransformerBase):
+# -------------------------------
+# Webcam Processor
+# -------------------------------
+class DogVision(VideoTransformerBase):
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
-
-        results = model.predict(img, conf=0.4, verbose=False)
+        results = model.predict(img, conf=0.45, verbose=False)
 
         for r in results:
+            if r.boxes is None:
+                continue
+
             for box, cls in zip(r.boxes.xyxy, r.boxes.cls):
                 label = model.names[int(cls)]
-
                 if label == "dog":
                     x1, y1, x2, y2 = map(int, box)
-                    area = (x2 - x1) * (y2 - y1)
+                    w, h = x2 - x1, y2 - y1
+                    area = w * h
 
-                    emotion = analyze_dog_state(area)
+                    gesture = classify_gesture(w, h)
+                    emotion = classify_emotion(area, gesture)
 
-                    cv2.rectangle(img, (x1,y1), (x2,y2), (0,255,0), 2)
-                    cv2.putText(img, emotion, (x1, y1-10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+                    msg = f"Your dog is {gesture} and feels {emotion}"
+                    st.session_state.last_message = msg
+
+                    # Draw UI
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 3)
+                    cv2.putText(
+                        img, msg, (x1, y1-12),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7, (0,255,0), 2
+                    )
 
         return img
 
+# -------------------------------
+# UI Layout
+# -------------------------------
+col1, col2 = st.columns([3, 1])
 
-webrtc_streamer(
-    key="dogtalk",
-    video_transformer_factory=DogVideoProcessor,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,
-)
+with col2:
+    st.subheader("🎯 Dog Interpretation")
+    st.info(st.session_state.last_message)
 
-st.markdown("---")
-st.markdown("### 🧠 DogTalk AI Interpretation")
-st.info("Point the camera at your dog and observe its behavior in real-time.")
+    if st.button("🔊 Speak Dog Emotion", use_container_width=True):
+        speak(st.session_state.last_message)
+
+    st.markdown("---")
+    st.markdown("### 📱 Mobile Tips")
+    st.markdown("• Allow camera access\n• Tap Speak button\n• Use landscape mode")
+
+# -------------------------------
+# Webcam
+# -------------------------------
+with col1:
+    webrtc_streamer(
+        key="dogtalk-ai",
+        video_transformer_factory=DogVision,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True
+    )
+
+st.markdown("<div class='footer'>DogTalk AI © 2026 — MVP Prototype</div>", unsafe_allow_html=True)
