@@ -15,16 +15,40 @@ st.set_page_config(page_title="DogTalk AI", layout="wide")
 st.title("🐕 DogTalk AI — 即時狗狗情緒翻譯系統")
 
 # ============ Load Models ============
+from ultralytics import YOLO
+import torch
+import streamlit as st
+import os
+
 @st.cache_resource
 def load_models():
-    dog_detector = YOLO("models/yolov8n-dog.pt")
-    pose_model = YOLO("models/yolov8-dogpose.pt")
-    #emotion_model = torch.jit.load("models/emotionnet.pt")
-    #behavior_model = torch.jit.load("models/behaviornet.pt")
-    return dog_detector, pose_model
+    # 1️⃣ Dog Detection (COCO has dog class)
+    dog_detector = YOLO("yolov8n.pt")   # auto download
 
-#dog_detector, pose_model, emotion_model, behavior_model = load_models()
-dog_detector, pose_model = load_models()
+    # 2️⃣ Dog Pose Model (YOLOv8 Pose)
+    # 使用官方 pose 模型，之後你可以換成你自己訓練的狗狗專用 pose
+    pose_model = YOLO("yolov8n-pose.pt")  # auto download
+
+    # 3️⃣ Emotion model
+    emotion_model_path = "models/emotionnet.pt"
+    if not os.path.exists(emotion_model_path):
+        st.warning("EmotionNet not found. Using demo model.")
+        emotion_model = None
+    else:
+        emotion_model = torch.jit.load(emotion_model_path)
+
+    # 4️⃣ Behavior model
+    behavior_model_path = "models/behaviornet.pt"
+    if not os.path.exists(behavior_model_path):
+        st.warning("BehaviorNet not found. Using demo model.")
+        behavior_model = None
+    else:
+        behavior_model = torch.jit.load(behavior_model_path)
+
+    return dog_detector, pose_model, emotion_model, behavior_model
+
+
+dog_detector, pose_model, emotion_model, behavior_model = load_models()
 
 # ============ TTS ============
 def speak(text):
