@@ -51,17 +51,11 @@ def speak(text):
     """, height=0)
 
 # -------------------------------
-# State
-# -------------------------------
-if "last_message" not in st.session_state:
-    st.session_state.last_message = "No dog detected yet."
-
-# -------------------------------
 # Load YOLO (auto-downloads)
 # -------------------------------
 @st.cache_resource
 def load_model():
-    return YOLO("yolov8n")
+    return YOLO("yolov8n.pt")
 
 model = load_model()
 
@@ -87,7 +81,7 @@ def classify_emotion(area, gesture):
     return "curious 🐾"
 
 # -------------------------------
-# Webcam Processor
+# Webcam Processor (Thread Safe)
 # -------------------------------
 class DogVision(VideoTransformerBase):
     def __init__(self):
@@ -117,6 +111,7 @@ class DogVision(VideoTransformerBase):
                     msg = f"The dog is {gesture} and feeling {emotion}"
                     self.last_message = msg
 
+                    # Draw overlay
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 3)
                     cv2.putText(
                         img, msg, (x1, y1-12),
@@ -129,7 +124,6 @@ class DogVision(VideoTransformerBase):
 
         return img
 
-
 # -------------------------------
 # UI Layout
 # -------------------------------
@@ -138,32 +132,43 @@ col1, col2 = st.columns([3, 1])
 with col2:
     st.subheader("🎯 Dog Interpretation")
 
-    if webrtc_ctx.video_transformer:
-        current_message = webrtc_ctx.video_transformer.last_message
-    else:
-        current_message = "Starting camera..."
+    placeholder = st.empty()
 
-    st.info(current_message)
+    st.markdown("---")
 
-    if st.button("🔊 Speak Dog Emotion", use_container_width=True):
-        speak(current_message)
+    speak_btn = st.button("🔊 Speak Dog Emotion", use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### 📱 Mobile Tips")
+    st.markdown("• Allow camera access\n• Tap Speak button\n• Use landscape mode")
 
 # -------------------------------
 # Webcam
 # -------------------------------
-with col1:
-    webrtc_ctx = webrtc_streamer(
-        key="dogtalk-ai",
-        video_transformer_factory=DogVision,
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True
-    )
+webrtc_ctx = webrtc_streamer(
+    key="dogtalk-ai",
+    video_transformer_factory=DogVision,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True
+)
 
-    #webrtc_streamer(
-    #    key="dogtalk-ai",
-    #    video_transformer_factory=DogVision,
-    #    media_stream_constraints={"video": True, "audio": False},
-    #    async_processing=True
-    #)
+# -------------------------------
+# Live Sidebar Sync
+# -------------------------------
+if webrtc_ctx.video_transformer:
+    current_message = webrtc_ctx.video_transformer.last_message
+else:
+    current_message = "Starting camera..."
 
+placeholder.info(current_message)
+
+# -------------------------------
+# Speak Button
+# -------------------------------
+if speak_btn:
+    speak(current_message)
+
+# -------------------------------
+# Footer
+# -------------------------------
 st.markdown("<div class='footer'>DogTalk AI © 2026 — MVP Prototype</div>", unsafe_allow_html=True)
