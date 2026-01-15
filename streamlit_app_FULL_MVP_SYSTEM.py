@@ -19,11 +19,12 @@ st.title("🐕 DogTalk AI — 即時狗狗情緒翻譯系統")
 def load_models():
     dog_detector = YOLO("models/yolov8n-dog.pt")
     pose_model = YOLO("models/yolov8-dogpose.pt")
-    emotion_model = torch.jit.load("models/emotionnet.pt")
-    behavior_model = torch.jit.load("models/behaviornet.pt")
-    return dog_detector, pose_model, emotion_model, behavior_model
+    #emotion_model = torch.jit.load("models/emotionnet.pt")
+    #behavior_model = torch.jit.load("models/behaviornet.pt")
+    return dog_detector, pose_model
 
-dog_detector, pose_model, emotion_model, behavior_model = load_models()
+#dog_detector, pose_model, emotion_model, behavior_model = load_models()
+dog_detector, pose_model = load_models()
 
 # ============ TTS ============
 def speak(text):
