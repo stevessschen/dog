@@ -2,35 +2,39 @@ import streamlit as st
 import cv2
 import numpy as np
 import av
+import threading
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from ultralytics import YOLO
-import time
 
 # -------------------------------
-# Load Models (Auto Download)
+# Thread-safe shared state
+# -------------------------------
+class SharedState:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.status = "No dog detected yet."
+
+shared_state = SharedState()
+
+# -------------------------------
+# Load models (auto download)
 # -------------------------------
 @st.cache_resource
 def load_models():
-    dog_model = YOLO("yolov8n.pt")        # auto-download
-    pose_model = YOLO("yolov8n-pose.pt")  # auto-download
+    dog_model = YOLO("yolov8n.pt")        # auto download
+    pose_model = YOLO("yolov8n-pose.pt")  # auto download
     return dog_model, pose_model
 
 dog_model, pose_model = load_models()
 
 # -------------------------------
-# Session State
-# -------------------------------
-if "dog_status" not in st.session_state:
-    st.session_state.dog_status = "No dog detected yet."
-
-# -------------------------------
 # Video Processor
 # -------------------------------
 class DogAIProcessor(VideoProcessorBase):
+
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
 
-        # Dog Detection
         results = dog_model(img, conf=0.4, verbose=False)[0]
 
         dog_found = False
@@ -45,7 +49,6 @@ class DogAIProcessor(VideoProcessorBase):
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cv2.rectangle(img, (x1,y1), (x2,y2), (0,255,0), 2)
 
-                # Crop dog for pose
                 dog_crop = img[y1:y2, x1:x2]
 
                 if dog_crop.size > 0:
@@ -59,8 +62,10 @@ class DogAIProcessor(VideoProcessorBase):
                                 3, (0,0,255), -1
                             )
 
-                status = "The dog is detected and being analyzed."
-                st.session_state.dog_status = status
+                status = "🐶 Dog detected — analyzing posture and emotion"
+
+                with shared_state.lock:
+                    shared_state.status = status
 
                 cv2.putText(
                     img,
@@ -73,7 +78,8 @@ class DogAIProcessor(VideoProcessorBase):
                 )
 
         if not dog_found:
-            st.session_state.dog_status = "No dog detected yet."
+            with shared_state.lock:
+                shared_state.status = "No dog detected yet."
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -81,7 +87,7 @@ class DogAIProcessor(VideoProcessorBase):
 # Streamlit UI
 # -------------------------------
 st.set_page_config(layout="wide")
-st.title("🐶 DogTalk AI — Real-time Dog Understanding System")
+st.title("🐶 DogTalk AI — Real-Time Dog Understanding System")
 
 col1, col2 = st.columns([2,1])
 
@@ -96,14 +102,22 @@ with col1:
 
 with col2:
     st.subheader("🧠 Dog Interpretation")
-    status_box = st.empty()
+    status_placeholder = st.empty()
 
-    while True:
-        status_box.markdown(
-            f"""
-            ### 🐕 Current Dog Status
-            **{st.session_state.dog_status}**
-            """
-        )
-        #st.sleep(0.3)
-        time.sleep(0.5)
+    if "ui_refresh" not in st.session_state:
+        st.session_state.ui_refresh = 0
+
+    # refresh UI every run
+    with shared_state.lock:
+        current_status = shared_state.status
+
+    status_placeholder.markdown(
+        f"""
+        ## 🐕 Dog Status
+        **{current_status}**
+        """
+    )
+
+# auto refresh UI every 500ms
+st.experimental_set_query_params(t=st.session_state.ui_refresh)
+st.session_state.ui_refresh += 1
