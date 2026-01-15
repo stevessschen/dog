@@ -4,6 +4,7 @@ import numpy as np
 import av
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from ultralytics import YOLO
+import time
 
 # -------------------------------
 # Load Models (Auto Download)
@@ -104,4 +105,5 @@ with col2:
             **{st.session_state.dog_status}**
             """
         )
-        st.sleep(0.3)
+        #st.sleep(0.3)
+        time.sleep(0.5)
