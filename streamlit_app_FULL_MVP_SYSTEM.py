@@ -4,6 +4,7 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 import streamlit.components.v1 as components
+import time
 
 # -------------------------------
 # Page Config (Mobile friendly)
@@ -51,7 +52,7 @@ def speak(text):
     """, height=0)
 
 # -------------------------------
-# Load YOLO (auto-downloads)
+# Load YOLO
 # -------------------------------
 @st.cache_resource
 def load_model():
@@ -81,7 +82,7 @@ def classify_emotion(area, gesture):
     return "curious 🐾"
 
 # -------------------------------
-# Webcam Processor (Thread Safe)
+# Webcam Processor
 # -------------------------------
 class DogVision(VideoTransformerBase):
     def __init__(self):
@@ -111,7 +112,6 @@ class DogVision(VideoTransformerBase):
                     msg = f"The dog is {gesture} and feeling {emotion}"
                     self.last_message = msg
 
-                    # Draw overlay
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 3)
                     cv2.putText(
                         img, msg, (x1, y1-12),
@@ -131,11 +131,7 @@ col1, col2 = st.columns([3, 1])
 
 with col2:
     st.subheader("🎯 Dog Interpretation")
-
-    placeholder = st.empty()
-
-    st.markdown("---")
-
+    status_box = st.empty()
     speak_btn = st.button("🔊 Speak Dog Emotion", use_container_width=True)
 
     st.markdown("---")
@@ -153,22 +149,24 @@ webrtc_ctx = webrtc_streamer(
 )
 
 # -------------------------------
-# Live Sidebar Sync
+# Live Auto Refresh Loop
 # -------------------------------
 if webrtc_ctx.video_transformer:
     current_message = webrtc_ctx.video_transformer.last_message
 else:
     current_message = "Starting camera..."
 
-placeholder.info(current_message)
+status_box.info(current_message)
 
-# -------------------------------
-# Speak Button
-# -------------------------------
 if speak_btn:
     speak(current_message)
 
 # -------------------------------
-# Footer
+# Auto-refresh every 0.5s
 # -------------------------------
-st.markdown("<div class='footer'>DogTalk AI © 2026 — MVP Prototype</div>", unsafe_allow_html=True)
+if "tick" not in st.session_state:
+    st.session_state.tick = 0
+
+st.session_state.tick += 1
+time.sleep(0.5)
+st.experimental_rerun()
