@@ -169,4 +169,5 @@ if "tick" not in st.session_state:
 
 st.session_state.tick += 1
 time.sleep(0.5)
-st.experimental_rerun()
+#st.experimental_rerun()
+st.rerun()
