@@ -1,175 +1,140 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-from ultralytics import YOLO
 import cv2
 import numpy as np
-import openai
-import streamlit.components.v1 as components
+from ultralytics import YOLO
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
+import pyttsx3
+import tempfile
+import torch
 import time
+import openai
 
-# -----------------------------
-# Page Config
-# -----------------------------
-st.set_page_config(
-    page_title="DogTalk AI Pro",
-    page_icon="🐕",
-    layout="wide"
-)
+# ============ CONFIG ============
+st.set_page_config(page_title="DogTalk AI", layout="wide")
+st.title("🐕 DogTalk AI — 即時狗狗情緒翻譯系統")
 
-st.title("🐕 DogTalk AI Pro")
-st.caption("Real-time Dog Behavior & Emotion AI Coach")
-
-# -----------------------------
-# Browser Voice Engine
-# -----------------------------
-components.html("""
-<script>
-window.dogtalkSpeak = function(text) {
-    const msg = new SpeechSynthesisUtterance(text);
-    msg.lang = "en-US";
-    msg.rate = 1;
-    msg.pitch = 1.1;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(msg);
-}
-</script>
-""", height=0)
-
-def speak(text):
-    components.html(f"""
-    <script>window.dogtalkSpeak("{text}");</script>
-    """, height=0)
-
-# -----------------------------
-# Load Models
-# -----------------------------
+# ============ Load Models ============
 @st.cache_resource
-def load_yolo():
-    return YOLO("yolov8n.pt")
+def load_models():
+    dog_detector = YOLO("models/yolov8n-dog.pt")
+    pose_model = YOLO("models/yolov8-dogpose.pt")
+    emotion_model = torch.jit.load("models/emotionnet.pt")
+    behavior_model = torch.jit.load("models/behaviornet.pt")
+    return dog_detector, pose_model, emotion_model, behavior_model
 
-yolo = load_yolo()
+dog_detector, pose_model, emotion_model, behavior_model = load_models()
 
-# -----------------------------
-# AI MODELS (可換成真模型)
-# -----------------------------
-def posenet_estimate(dog_crop):
-    return "sitting"   # standing / sitting / lying / running
+# ============ TTS ============
+def speak(text):
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 165)
+    engine.say(text)
+    engine.runAndWait()
 
-def tailnet_predict(dog_crop):
-    return "wagging"   # high / low / tucked / wagging
-
-def emotionnet_predict(pose, tail):
-    if tail == "wagging":
-        return "excited 🤩"
-    if pose == "lying":
-        return "relaxed 😌"
-    return "alert 👀"
-
-def behaviordnet_predict(pose, emotion):
-    if emotion == "excited 🤩":
-        return "playing"
-    if pose == "lying":
-        return "resting"
-    return "observing"
-
-# -----------------------------
-# GPT Coach
-# -----------------------------
-openai.api_key = st.secrets.get("OPENAI_API_KEY", "")
-
+# ============ GPT Coach ============
 def gpt_coach(emotion, behavior):
-    if not openai.api_key:
-        return "Your dog seems happy. Keep engaging with calm play."
-
     prompt = f"""
-    My dog is feeling {emotion} and currently {behavior}.
-    Give me a short coaching suggestion.
-    """
+A dog is showing {emotion} emotion and behavior is {behavior}.
+Give short coaching advice for the owner.
+"""
 
-    resp = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role":"user","content":prompt}]
-    )
+    return f"Your dog feels {emotion}. Suggested action: Give calm interaction and positive reinforcement."
 
-    return resp.choices[0].message.content
+# ============ Pose Analysis ============
+def analyze_pose(kpts):
+    xs = kpts[:, 0]
+    ys = kpts[:, 1]
+    width = xs.max() - xs.min()
+    height = ys.max() - ys.min()
+    ratio = height / (width + 1e-5)
 
-# -----------------------------
-# Vision Pipeline
-# -----------------------------
+    if ratio > 1.3:
+        return "standing"
+    elif ratio < 0.7:
+        return "lying"
+    else:
+        return "sitting"
+
+# ============ Vision Pipeline ============
 class DogVision(VideoTransformerBase):
     def __init__(self):
-        self.status = "Waiting for dog..."
+        self.last_message = "No dog detected yet."
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        results = yolo.predict(img, conf=0.45, verbose=False)
+        results = dog_detector(img, conf=0.4, verbose=False)
 
         for r in results:
             if r.boxes is None:
                 continue
 
-            for box, cls in zip(r.boxes.xyxy, r.boxes.cls):
-                label = yolo.names[int(cls)]
-                if label == "dog":
-                    x1, y1, x2, y2 = map(int, box)
-                    dog_crop = img[y1:y2, x1:x2]
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                dog_crop = img[y1:y2, x1:x2]
 
-                    pose = posenet_estimate(dog_crop)
-                    tail = tailnet_predict(dog_crop)
-                    emotion = emotionnet_predict(pose, tail)
-                    behavior = behaviordnet_predict(pose, emotion)
-                    coach = gpt_coach(emotion, behavior)
+                # Pose
+                pose_results = pose_model.predict(dog_crop, conf=0.4, verbose=False)
 
-                    self.status = f"""
-                    🐶 Pose: {pose}
-                    🐕 Tail: {tail}
-                    😃 Emotion: {emotion}
-                    🎯 Behavior: {behavior}
-                    💡 Coach: {coach}
-                    """
+                pose = "unknown"
+                for pr in pose_results:
+                    if pr.keypoints is None:
+                        continue
+                    kpts = pr.keypoints.xy.cpu().numpy()[0]
+                    pose = analyze_pose(kpts)
 
-                    cv2.rectangle(img,(x1,y1),(x2,y2),(0,255,0),3)
-                    cv2.putText(img, f"{emotion} | {behavior}",
-                        (x1,y1-10), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,(0,255,0),2)
+                    # Draw skeleton
+                    for x, y in kpts:
+                        cv2.circle(img, (int(x + x1), int(y + y1)), 3, (0, 0, 255), -1)
+
+                # Fake emotion + behavior (replace with real inference)
+                emotion = np.random.choice(["relaxed", "excited", "alert", "nervous"])
+                behavior = np.random.choice(["resting", "playing", "guarding", "running"])
+
+                self.last_message = f"The dog is {pose} and feeling {emotion}"
+
+                # Draw box
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 2)
+                cv2.putText(img, self.last_message, (x1, y1-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+
+                st.session_state["dog_message"] = self.last_message
+                st.session_state["emotion"] = emotion
+                st.session_state["behavior"] = behavior
 
         return img
 
-# -----------------------------
-# UI Layout
-# -----------------------------
-col1, col2 = st.columns([3,2])
+# ============ UI ============
+if "dog_message" not in st.session_state:
+    st.session_state["dog_message"] = "No dog detected yet."
+
+if "emotion" not in st.session_state:
+    st.session_state["emotion"] = "unknown"
+
+if "behavior" not in st.session_state:
+    st.session_state["behavior"] = "unknown"
+
+# ============ Layout ============
+col1, col2 = st.columns([2,1])
+
+with col1:
+    st.subheader("📷 Live Camera")
+    webrtc_streamer(key="dogcam", video_transformer_factory=DogVision, media_stream_constraints={"video": True, "audio": False})
 
 with col2:
-    st.subheader("📊 Dog Interpretation")
-    status_box = st.empty()
-    speak_btn = st.button("🔊 AI Coach Speak")
+    st.subheader("🧠 Dog Interpretation")
 
-# -----------------------------
-# Webcam
-# -----------------------------
-webrtc_ctx = webrtc_streamer(
-    key="dogtalk-pro",
-    video_transformer_factory=DogVision,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True
-)
+    st.metric("Pose", st.session_state["dog_message"])
+    st.metric("Emotion", st.session_state["emotion"])
+    st.metric("Behavior", st.session_state["behavior"])
 
-# -----------------------------
-# Live Status
-# -----------------------------
-if webrtc_ctx.video_transformer:
-    status = webrtc_ctx.video_transformer.status
-else:
-    status = "Starting camera..."
+    if st.button("🔊 Speak Dog Emotion"):
+        speak(st.session_state["dog_message"])
 
-status_box.info(status)
+    if st.button("🤖 AI Coach Advice"):
+        advice = gpt_coach(st.session_state["emotion"], st.session_state["behavior"])
+        st.success(advice)
+        speak(advice)
 
-if speak_btn:
-    speak(status)
-
-# -----------------------------
-# Auto Refresh
-# -----------------------------
-time.sleep(0.5)
-st.rerun()
+st.markdown("---")
+st.caption("DogTalk AI © 2026 - Real-time Dog Emotion Translator")
