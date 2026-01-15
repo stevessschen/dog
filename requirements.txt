@@ -3,4 +3,3 @@ streamlit-webrtc
 opencv-python
 numpy
 ultralytics
-pyttsx3
