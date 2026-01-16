@@ -5,7 +5,6 @@ import av
 import threading
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from ultralytics import YOLO
-import time
 
 # -------------------------------
 # Thread-safe shared state
@@ -120,15 +119,5 @@ with col2:
     )
 
 # auto refresh UI every 500ms
-#st.experimental_set_query_params(t=st.session_state.ui_refresh)
-#st.session_state.ui_refresh += 1
-
-# -------------------------------
-# Auto-refresh every 0.5s
-# -------------------------------
-if "tick" not in st.session_state:
-    st.session_state.tick = 0
-
-st.session_state.tick += 1
-time.sleep(0.5)
-st.rerun()
+st.experimental_set_query_params(t=st.session_state.ui_refresh)
+st.session_state.ui_refresh += 1
