@@ -132,8 +132,8 @@ webrtc_ctx = webrtc_streamer(
     video_processor_factory=DogVision,
     media_stream_constraints={
         "video": {
-            "width": {"ideal": 1280},
-            "height": {"ideal": 720},
+            #"width": {"ideal": 1280},
+            #"height": {"ideal": 720},
             "facingMode": "environment"
         },
         "audio": False
