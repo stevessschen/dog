@@ -128,11 +128,25 @@ class DogVision(VideoTransformerBase):
 # Webcam
 # -------------------------------
 webrtc_ctx = webrtc_streamer(
-    key="dogtalk-ai",
-    video_transformer_factory=DogVision,
-    media_stream_constraints={"video": True, "audio": False},
+    key="dog",
+    video_processor_factory=DogDetector,
+    media_stream_constraints={
+        "video": {
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720},
+            "facingMode": "environment"
+        },
+        "audio": False
+    },
     async_processing=True
 )
+
+#webrtc_ctx = webrtc_streamer(
+#    key="dogtalk-ai",
+#    video_transformer_factory=DogVision,
+#    media_stream_constraints={"video": True, "audio": False},
+#    async_processing=True
+#)
 
 # -------------------------------
 # UI Layout
