@@ -2,42 +2,37 @@ import streamlit as st
 import cv2
 import numpy as np
 import av
-import threading
+import queue
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from ultralytics import YOLO
 
-# -------------------------------
-# Thread-safe shared state
-# -------------------------------
-class SharedState:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.status = "No dog detected yet."
+# ----------------------------------------
+# Global message queue (thread-safe bridge)
+# ----------------------------------------
+status_queue = queue.Queue(maxsize=1)
 
-shared_state = SharedState()
-
-# -------------------------------
-# Load models (auto download)
-# -------------------------------
+# ----------------------------------------
+# Load Models (auto download)
+# ----------------------------------------
 @st.cache_resource
 def load_models():
-    dog_model = YOLO("yolov8n.pt")        # auto download
-    pose_model = YOLO("yolov8n-pose.pt")  # auto download
+    dog_model = YOLO("yolov8n.pt")
+    pose_model = YOLO("yolov8n-pose.pt")
     return dog_model, pose_model
 
 dog_model, pose_model = load_models()
 
-# -------------------------------
+# ----------------------------------------
 # Video Processor
-# -------------------------------
+# ----------------------------------------
 class DogAIProcessor(VideoProcessorBase):
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-
         results = dog_model(img, conf=0.4, verbose=False)[0]
 
         dog_found = False
+        status_text = "No dog detected yet."
 
         for box in results.boxes:
             cls = int(box.cls[0])
@@ -45,15 +40,14 @@ class DogAIProcessor(VideoProcessorBase):
 
             if name == "dog":
                 dog_found = True
-
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
+
                 cv2.rectangle(img, (x1,y1), (x2,y2), (0,255,0), 2)
 
                 dog_crop = img[y1:y2, x1:x2]
 
                 if dog_crop.size > 0:
                     pose_results = pose_model(dog_crop, verbose=False)[0]
-
                     if pose_results.keypoints is not None:
                         for kp in pose_results.keypoints.xy[0]:
                             cv2.circle(
@@ -62,30 +56,29 @@ class DogAIProcessor(VideoProcessorBase):
                                 3, (0,0,255), -1
                             )
 
-                status = "🐶 Dog detected — analyzing posture and emotion"
-
-                with shared_state.lock:
-                    shared_state.status = status
+                status_text = "🐶 Dog detected — analysing pose"
 
                 cv2.putText(
                     img,
-                    status,
+                    status_text,
                     (x1, y1-10),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
+                    0.7,
                     (0,255,0),
                     2
                 )
 
-        if not dog_found:
-            with shared_state.lock:
-                shared_state.status = "No dog detected yet."
+                break
+
+        # push status into queue (non-blocking)
+        if not status_queue.full():
+            status_queue.put(status_text)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# -------------------------------
+# ----------------------------------------
 # Streamlit UI
-# -------------------------------
+# ----------------------------------------
 st.set_page_config(layout="wide")
 st.title("🐶 DogTalk AI — Real-Time Dog Understanding System")
 
@@ -102,22 +95,22 @@ with col1:
 
 with col2:
     st.subheader("🧠 Dog Interpretation")
-    status_placeholder = st.empty()
 
-    if "ui_refresh" not in st.session_state:
-        st.session_state.ui_refresh = 0
+    if "dog_status" not in st.session_state:
+        st.session_state.dog_status = "No dog detected yet."
 
-    # refresh UI every run
-    with shared_state.lock:
-        current_status = shared_state.status
+    status_box = st.empty()
 
-    status_placeholder.markdown(
+    # read latest status from queue
+    try:
+        while True:
+            st.session_state.dog_status = status_queue.get_nowait()
+    except queue.Empty:
+        pass
+
+    status_box.markdown(
         f"""
         ## 🐕 Dog Status
-        **{current_status}**
+        **{st.session_state.dog_status}**
         """
     )
-
-# auto refresh UI every 500ms
-st.experimental_set_query_params(t=st.session_state.ui_refresh)
-st.session_state.ui_refresh += 1
