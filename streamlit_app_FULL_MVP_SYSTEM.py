@@ -144,11 +144,11 @@ with col2:
 
     placeholder = st.empty()
 
-    st.markdown("---")
+    #st.markdown("---")
 
     speak_btn = st.button("🔊 Speak Dog Emotion", use_container_width=True)
 
-    st.markdown("---")
+    #st.markdown("---")
     st.markdown("### 📱 Mobile Tips")
     st.markdown("• Allow camera access\n• Tap Speak button\n• Use landscape mode")
 
