@@ -129,7 +129,7 @@ class DogVision(VideoTransformerBase):
 # -------------------------------
 webrtc_ctx = webrtc_streamer(
     key="dog",
-    video_processor_factory=DogDetector,
+    video_processor_factory=DogVision,
     media_stream_constraints={
         "video": {
             "width": {"ideal": 1280},
