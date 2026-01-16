@@ -125,6 +125,16 @@ class DogVision(VideoTransformerBase):
         return img
 
 # -------------------------------
+# Webcam
+# -------------------------------
+webrtc_ctx = webrtc_streamer(
+    key="dogtalk-ai",
+    video_transformer_factory=DogVision,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True
+)
+
+# -------------------------------
 # UI Layout
 # -------------------------------
 col1, col2 = st.columns([3, 1])
@@ -141,16 +151,6 @@ with col2:
     st.markdown("---")
     st.markdown("### 📱 Mobile Tips")
     st.markdown("• Allow camera access\n• Tap Speak button\n• Use landscape mode")
-
-# -------------------------------
-# Webcam
-# -------------------------------
-webrtc_ctx = webrtc_streamer(
-    key="dogtalk-ai",
-    video_transformer_factory=DogVision,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True
-)
 
 # -------------------------------
 # Live Sidebar Sync
